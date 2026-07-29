@@ -11,7 +11,7 @@ They must not be swapped by filename alone.
 | Image shape | `[1, 256, 256, 3]` | `[1, 224, 224, 3]` |
 | Additional input | Three metadata values | None |
 | Image scaling | `[0, 1]` | To be verified |
-| Decision threshold | 0.2002 from notebook validation | Must be recalculated for deployed model |
+| Decision threshold | Read from the matching `metrics_256.json` test run | Must be recalculated for deployed model |
 
 ## Release gate
 
@@ -21,8 +21,8 @@ Do not place a new model in `app/src/main/assets` until all of these checks pass
 2. Export TensorFlow Lite from that exact checkpoint.
 3. Inspect and record every input/output tensor name, shape and dtype.
 4. Record image colour order, resizing, scaling and metadata encoding.
-5. Freeze the decision threshold from the matching validation run.
-6. Run a Python/TFLite parity test on representative samples.
+5. Select the threshold on validation and freeze it before test evaluation.
+6. Run the generated Keras/TFLite parity test on the held-out test split.
 7. Run the same samples through the Android preprocessing and interpreter.
 8. Compare probabilities within a documented tolerance.
 9. Run Android unit/instrumentation tests for invalid inputs and model loading.
@@ -53,4 +53,3 @@ For this portfolio project, the simplest reliable approach is:
 
 Automating the download in Gradle can be added later, but a network-dependent
 build is not necessary for the initial portfolio cleanup.
-

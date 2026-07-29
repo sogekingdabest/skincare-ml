@@ -26,7 +26,8 @@
 
 - [ ] Confirm which model should be the canonical Android model.
 - [ ] Run a clean Kaggle execution from top to bottom.
-- [ ] Verify patient-level train/validation separation.
+- [x] Add automatic patient-overlap auditing when `patient_id` is available.
+- [ ] Confirm the new Kaggle run reports `verified_no_overlap`.
 - [ ] Save the notebook version and Kaggle Docker image identifier.
 - [ ] Export the matching Keras and TensorFlow Lite artifacts.
 - [ ] Update `artifacts/manifest.json`.

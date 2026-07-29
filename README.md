@@ -56,16 +56,13 @@ limitations.
 
 ## Run on Kaggle
 
-1. Create a Kaggle Notebook or import
-   `notebooks/skincare_training.ipynb`.
-2. Attach the four dataset versions listed in
-   [docs/DATASETS.md](docs/DATASETS.md).
-3. Enable a GPU accelerator.
-4. Run the notebook from top to bottom.
-5. Download the generated `.keras` and `.tflite` artifacts from
-   `/kaggle/working`.
-6. Calculate their SHA-256 hashes and register them in
-   `artifacts/manifest.json`.
+1. Authenticate once with `kaggle auth login`.
+2. Push the repository root with `kaggle kernels push -p .`.
+3. Follow the run with
+   `kaggle kernels status daniolaetafaria/skincare-ai-multimodal-melanoma-classification`.
+4. Download `metrics.json`, the resolution-specific reports and the approved
+   model artifact with `kaggle kernels output`.
+5. Register the final artifact and SHA-256 in `artifacts/manifest.json`.
 
 The notebook currently targets the Kaggle Python 3 environment and records
 Python `3.12.12` in its metadata. Kaggle images change over time, so record the
@@ -76,8 +73,10 @@ Kaggle notebook version and Docker image identifier for every published model.
 The notebook committed to Git intentionally contains no execution outputs or
 Kaggle runtime metadata at cell level. This keeps reviews readable and avoids
 committing progress bars, CUDA warnings and large TensorFlow conversion traces.
-The reference metrics remain documented in
-[docs/MODEL_CARD.md](docs/MODEL_CARD.md).
+The historical baseline remains documented in
+[docs/MODEL_CARD.md](docs/MODEL_CARD.md). Each successful Kaggle run also
+exports machine-readable `metrics_256.json`, `metrics_384.json` and
+`metrics.json`.
 
 After downloading an executed notebook from Kaggle, prepare it for Git with:
 
@@ -85,8 +84,9 @@ After downloading an executed notebook from Kaggle, prepare it for Git with:
 python scripts/prepare_notebook.py
 ```
 
-This command repairs legacy text encoding, clears outputs and restores the
-documented section narrative. It does not execute or retrain the model.
+This command repairs legacy text encoding, clears outputs and rebuilds the
+canonical split, evaluation, parity and export cells. It does not execute or
+retrain the model.
 
 ## Local environment
 

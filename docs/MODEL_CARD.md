@@ -48,10 +48,10 @@ Training has two principal phases:
 The notebook also contains an experimental 384-pixel progressive-resizing
 phase. The exported artifact currently comes from the best 256-pixel model.
 
-## Recorded validation result
+## Legacy validation baseline
 
-The current notebook output reports the following values for its 256-pixel
-validation split:
+The previous notebook version reported the following values after selecting
+and evaluating its threshold on the same 256-pixel validation split:
 
 | Metric | Value |
 | --- | ---: |
@@ -66,16 +66,18 @@ validation split:
 | Matthews correlation coefficient | 0.1585 |
 | Balanced accuracy | 77.71% |
 
-These are experimental validation metrics, not externally validated clinical
-performance. The low precision and average precision are material limitations
-and must not be hidden behind the high accuracy or negative predictive value.
+These values are retained only as a historical baseline. The current notebook
+selects its threshold on validation and writes final Keras and TFLite metrics
+from a separate test split to `metrics_256.json`. Results from a new successful
+run should replace this table before a model release.
 
 ## Known limitations
 
 - Severe class imbalance makes accuracy a misleading headline metric.
-- The validation split is based on sorted TFRecord shards; patient-level
-  separation has not yet been demonstrated.
-- There is no independent test cohort or external validation.
+- Train, threshold-validation and test are separated by TFRecord shard.
+- Patient-level separation depends on the availability of `patient_id` in the
+  source TFRecords and is recorded in the generated metrics.
+- The held-out test is internal; there is no external clinical validation.
 - Demographic and acquisition-device performance have not been stratified.
 - Metadata encodings are simplistic and include sentinel values that need
   explicit documentation.
@@ -100,10 +102,13 @@ For a release-quality run, also record exact package versions, the Kaggle
 Docker image, Python's random seed and deterministic-operation settings where
 supported.
 
+Every successful run exports `metrics_256.json`, `metrics_384.json` and a
+consolidated `metrics.json`, including split provenance, confusion matrices,
+threshold selection, artifact hashes and Keras/TFLite parity.
+
 ## Ethical and safety considerations
 
 False negatives can delay medical evaluation, while false positives can cause
 unnecessary anxiety. Any user-facing integration must state that the result is
 informational, avoid diagnostic language and direct users to qualified medical
 professionals when concerned.
-
