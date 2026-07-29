@@ -1,5 +1,5 @@
 {
-  "id": "daniolaetafaria/skincare-ai-training",
+  "id": "daniolaetafaria/skincare-ai-multimodal-melanoma-classification",
   "title": "SkinCare AI - Multimodal Melanoma Classification",
   "code_file": "notebooks/skincare_training.ipynb",
   "language": "python",
