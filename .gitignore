@@ -6,6 +6,7 @@ venv/
 
 # Jupyter
 .ipynb_checkpoints/
+graphify-out/
 
 # Training outputs
 checkpoints/
@@ -34,4 +35,3 @@ kaggle.json
 Thumbs.db
 .idea/
 .vscode/
-

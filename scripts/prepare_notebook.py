@@ -1,9 +1,8 @@
-"""Prepare the training notebook for clean version control.
+"""Build the portfolio-ready Kaggle training notebook.
 
-The script is intentionally limited to presentation and reproducibility
-improvements: it repairs legacy text encoding, removes execution state and
-replaces the terse section headings with the documented portfolio narrative.
-It does not execute the notebook or alter the training phases.
+The script repairs legacy text encoding, removes execution state, refreshes the
+documented narrative and installs the canonical data-splitting, evaluation and
+export cells. It never executes the notebook.
 """
 
 from __future__ import annotations
@@ -13,6 +12,8 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+
+from notebook_cells import CANONICAL_CODE_CELLS, CANONICAL_MARKDOWN_SECTIONS
 
 
 MARKDOWN_SECTIONS = {
@@ -153,6 +154,8 @@ procedimiento de paridad necesario antes de una integración se describe en
 """,
 }
 
+MARKDOWN_SECTIONS.update(CANONICAL_MARKDOWN_SECTIONS)
+
 
 FINAL_MARKDOWN = """## Artefactos y trazabilidad
 
@@ -251,18 +254,19 @@ def prepare_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
     cells[1]["source"] = source_lines(environment)
 
     data_256 = "".join(cells[5]["source"])
-    data_256 = replace_once(
-        data_256,
-        "FILES_2019 = tf.io.gfile.glob(GCS_PATH_2019 + '/train*.tfrec')\n",
-        (
-            "FILES_2019 = tf.io.gfile.glob(GCS_PATH_2019 + '/train*.tfrec')\n\n"
-            "if not FILES_2020 or not FILES_2019:\n"
-            "    raise FileNotFoundError(\n"
-            "        'No se encontraron los TFRecords de 256 px. '\n"
-            "        'Adjunta los datasets indicados en docs/DATASETS.md.'\n"
-            "    )\n"
-        ),
-    )
+    if "split_tfrecord_shards" not in data_256:
+        data_256 = replace_once(
+            data_256,
+            "FILES_2019 = tf.io.gfile.glob(GCS_PATH_2019 + '/train*.tfrec')\n",
+            (
+                "FILES_2019 = tf.io.gfile.glob(GCS_PATH_2019 + '/train*.tfrec')\n\n"
+                "if not FILES_2020 or not FILES_2019:\n"
+                "    raise FileNotFoundError(\n"
+                "        'No se encontraron los TFRecords de 256 px. '\n"
+                "        'Adjunta los datasets indicados en docs/DATASETS.md.'\n"
+                "    )\n"
+            ),
+        )
     cells[5]["source"] = source_lines(data_256)
 
     fine_tuning = "".join(cells[13]["source"])
@@ -285,18 +289,19 @@ def prepare_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
     cells[13]["source"] = source_lines(fine_tuning)
 
     data_384 = "".join(cells[17]["source"])
-    data_384 = replace_once(
-        data_384,
-        "FILES_2019_384 = tf.io.gfile.glob(GCS_PATH_2019_384 + '/train*.tfrec')\n",
-        (
-            "FILES_2019_384 = tf.io.gfile.glob(GCS_PATH_2019_384 + '/train*.tfrec')\n\n"
-            "if not FILES_2020_384 or not FILES_2019_384:\n"
-            "    raise FileNotFoundError(\n"
-            "        'No se encontraron los TFRecords de 384 px. '\n"
-            "        'Adjunta los datasets indicados en docs/DATASETS.md.'\n"
-            "    )\n"
-        ),
-    )
+    if "split_tfrecord_shards" not in data_384:
+        data_384 = replace_once(
+            data_384,
+            "FILES_2019_384 = tf.io.gfile.glob(GCS_PATH_2019_384 + '/train*.tfrec')\n",
+            (
+                "FILES_2019_384 = tf.io.gfile.glob(GCS_PATH_2019_384 + '/train*.tfrec')\n\n"
+                "if not FILES_2020_384 or not FILES_2019_384:\n"
+                "    raise FileNotFoundError(\n"
+                "        'No se encontraron los TFRecords de 384 px. '\n"
+                "        'Adjunta los datasets indicados en docs/DATASETS.md.'\n"
+                "    )\n"
+            ),
+        )
     cells[17]["source"] = source_lines(data_384)
 
     evaluation_384 = "".join(cells[21]["source"])
@@ -312,6 +317,11 @@ def prepare_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
     for old, new in replacements.items():
         evaluation_384 = evaluation_384.replace(old, new)
     cells[21]["source"] = source_lines(evaluation_384)
+
+    for index, source in CANONICAL_CODE_CELLS.items():
+        if cells[index].get("cell_type") != "code":
+            raise ValueError(f"Cell {index + 1} is not code")
+        cells[index]["source"] = source_lines(source)
 
     if len(cells) == 24:
         cells.append(
