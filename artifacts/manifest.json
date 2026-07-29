@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "name": "skincare_model_multimodal.keras",
+      "version": "0.1.0-experimental",
+      "role": "training-checkpoint",
+      "status": "experimental",
+      "sizeBytes": 42338863,
+      "sha256": "70fb6deba1aa6e00428058f718387837a2b9da826a33333b50ee1162eb7fb73d",
+      "source": "notebooks/skincare_training.ipynb",
+      "distributedWithGit": false
+    },
+    {
+      "name": "skincare_multimodal_256.tflite",
+      "version": "0.1.0-experimental",
+      "role": "mobile-export",
+      "status": "not-compatible-with-current-android-integration",
+      "sizeBytes": 6759528,
+      "sha256": "6e86cd32463c3d60111c525aafb901990718b52369a5d1ba14b0ffd84940271b",
+      "source": "skincare_model_multimodal.keras",
+      "distributedWithGit": false
+    },
+    {
+      "name": "melanoma_efficientnet_dynamic.tflite",
+      "version": "legacy-unresolved",
+      "role": "android-production-asset",
+      "status": "deployed-origin-not-reproducible-from-current-notebook",
+      "sizeBytes": 7299960,
+      "sha256": "7a72d18c8ffc829d724b38f1c81a27914806a8020489f22d7bbab458435c11e7",
+      "source": "unknown",
+      "distributedWithGit": false
+    }
+  ]
+}
+
