@@ -1,0 +1,19 @@
+{
+  "id": "daniolaetafaria/skincare-ai-training",
+  "title": "SkinCare AI - Multimodal Melanoma Classification",
+  "code_file": "notebooks/skincare_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [
+    "cdeotte/melanoma-256x256",
+    "cdeotte/isic2019-256x256",
+    "cdeotte/melanoma-384x384",
+    "cdeotte/isic2019-384x384"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

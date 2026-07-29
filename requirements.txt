@@ -1,0 +1,12 @@
+# Kaggle is the reference runtime. Pin exact versions when publishing the first
+# reproducible model release from a recorded Kaggle environment.
+tensorflow
+numpy
+pandas
+scikit-learn
+opencv-python-headless
+matplotlib
+seaborn
+tqdm
+jupyter
+

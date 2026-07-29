@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Training outputs
+checkpoints/
+logs/
+tensorboard/
+wandb/
+
+# Model binaries are published as release assets
+artifacts/*.keras
+artifacts/*.h5
+artifacts/*.tflite
+artifacts/*.onnx
+artifacts/*.pt
+
+# Local datasets
+data/
+datasets/
+
+# Environment and secrets
+.env
+.kaggle/
+kaggle.json
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
