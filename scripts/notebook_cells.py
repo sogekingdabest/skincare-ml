@@ -123,7 +123,7 @@ assert_disjoint_shards(
 
 def collect_patient_ids(filenames):
     patient_spec = {
-        'patient_id': tf.io.FixedLenFeature([], tf.string, default_value=b'')
+        'patient_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1)
     }
 
     def parse_patient_id(example):
@@ -135,9 +135,9 @@ def collect_patient_ids(filenames):
     patient_ids = set()
     for batch in dataset:
         patient_ids.update(
-            raw.decode('utf-8')
+            int(raw)
             for raw in batch.numpy()
-            if raw
+            if raw >= 0
         )
     return patient_ids
 
