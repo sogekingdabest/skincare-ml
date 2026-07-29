@@ -19,7 +19,7 @@
 - [ ] Verify and record the exact licenses of all four attached dataset versions.
 - [ ] Add the required ISIC and dataset citations.
 - [ ] Decide whether to preserve the original notebook's Git history.
-- [ ] Review notebook outputs and remove noisy runtime traces.
+- [x] Review notebook outputs and remove noisy runtime traces.
 - [ ] Pin the exact package versions from a successful Kaggle run.
 
 ## First model release

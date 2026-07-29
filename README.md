@@ -71,6 +71,23 @@ The notebook currently targets the Kaggle Python 3 environment and records
 Python `3.12.12` in its metadata. Kaggle images change over time, so record the
 Kaggle notebook version and Docker image identifier for every published model.
 
+## Notebook hygiene
+
+The notebook committed to Git intentionally contains no execution outputs or
+Kaggle runtime metadata at cell level. This keeps reviews readable and avoids
+committing progress bars, CUDA warnings and large TensorFlow conversion traces.
+The reference metrics remain documented in
+[docs/MODEL_CARD.md](docs/MODEL_CARD.md).
+
+After downloading an executed notebook from Kaggle, prepare it for Git with:
+
+```bash
+python scripts/prepare_notebook.py
+```
+
+This command repairs legacy text encoding, clears outputs and restores the
+documented section narrative. It does not execute or retrain the model.
+
 ## Local environment
 
 Kaggle is the reference execution environment. A local environment can be
