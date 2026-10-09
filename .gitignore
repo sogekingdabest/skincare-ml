@@ -29,9 +29,16 @@ datasets/
 .env
 .kaggle/
 kaggle.json
+kaggle/capture_validity/capture_validity_training.ipynb
+kaggle/capture_curation/capture_source_audit.py
+kaggle/capture_review_materializer/capture_review_materializer.py
 
 # OS and IDE
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+
+# Revisiones privadas y archivos temporales de los tests locales.
+/review_dani.csv
+/.test-tmp/

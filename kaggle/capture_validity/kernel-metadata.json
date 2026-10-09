@@ -1,0 +1,17 @@
+{
+  "id": "daniolaetafaria/skincare-capture-validity-classifier",
+  "title": "SkinCare - Capture Validity Classifier",
+  "code_file": "capture_validity_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": false,
+  "dataset_sources": [
+    "daniolaetafaria/skincare-capture-validity-tfrecords",
+    "daniolaetafaria/skincare-mobilenetv3-small-imagenet-weights"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

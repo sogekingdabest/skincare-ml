@@ -1,0 +1,17 @@
+{
+  "id": "daniolaetafaria/skincare-capture-review-materializer",
+  "title": "SkinCare - Capture Review Materializer",
+  "code_file": "capture_review_materializer.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "dataset_sources": [
+    "mahdavi1202/skin-cancer",
+    "emmanuelkiriinya/scin-google-dermatology-dataset"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

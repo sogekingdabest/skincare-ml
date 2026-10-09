@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Revisión prioritaria · SkinCare</title>
+  <style>
+    :root{color-scheme:dark;--bg:#101311;--panel:#19201b;--line:#354039;--text:#f2f5f3;--muted:#aeb9b2;--green:#58c46b;--orange:#ff9b54;--blue:#72a7ff}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,sans-serif}
+    header{padding:16px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:16px}
+    main{display:grid;grid-template-columns:minmax(320px,1.4fr) minmax(320px,.8fr);min-height:calc(100vh - 70px)}
+    .viewer{display:grid;place-items:center;padding:22px;background:#080a09}.viewer img{max-width:100%;max-height:78vh;border-radius:16px;box-shadow:0 8px 40px #0009}
+    aside{padding:24px;display:flex;flex-direction:column;gap:18px}.muted{color:var(--muted)}
+    .meta{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;margin:0}.meta dt{color:var(--muted)}.meta dd{margin:0;overflow-wrap:anywhere}
+    .actions{display:grid;gap:10px}.actions button,.nav button{border:1px solid var(--line);border-radius:12px;padding:14px;color:var(--text);background:#252d28;font-weight:700;cursor:pointer;text-align:left}
+    .actions button:hover{border-color:#829087}.keep{box-shadow:inset 4px 0 var(--green)}.correct{box-shadow:inset 4px 0 var(--orange)}.ambiguous{box-shadow:inset 4px 0 var(--blue)}
+    label{display:grid;gap:7px}select,textarea{background:#111612;color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px}textarea{min-height:88px;resize:vertical}
+    .nav{display:flex;justify-content:space-between;gap:10px}.nav button{text-align:center;flex:1}.notice{min-height:24px;color:var(--green);font-weight:650}
+    .progress{height:7px;background:#2a332d;border-radius:9px;overflow:hidden}.progress span{display:block;height:100%;background:var(--green)}
+    @media(max-width:800px){main{grid-template-columns:1fr}.viewer img{max-height:55vh}header{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+  <header><strong>Revisión enfocada de etiquetas</strong><span id="stats"></span></header>
+  <div class="progress"><span id="bar"></span></div>
+  <main>
+    <section class="viewer"><img id="image" alt="Muestra prioritaria"></section>
+    <aside>
+      <div><strong id="position"></strong><p class="muted">Decide si el recorte contiene un lunar objetivo centrado. No diagnostiques la lesión.</p></div>
+      <dl class="meta" id="meta"></dl>
+      <div class="actions">
+        <button class="keep" data-decision="keep_label">1 · Mantener piel sin objetivo</button>
+        <button class="correct" data-decision="correct_to_target">2 · Corregir a lunar objetivo</button>
+        <button class="ambiguous" data-decision="ambiguous">A · Ambigua: excluir del entrenamiento</button>
+      </div>
+      <label>Confianza<select id="confidence"><option value="high">Alta</option><option value="medium" selected>Media</option><option value="low">Baja</option></select></label>
+      <label>Notas opcionales<textarea id="notes" maxlength="2000" placeholder="Qué rasgo te hizo decidir"></textarea></label>
+      <div class="nav"><button id="previous">← Anterior</button><button id="next">Siguiente →</button></div>
+      <div class="notice" id="notice"></div>
+      <small class="muted">Atajos: 1 mantener · 2 corregir · A ambigua · ←/→ navegar. Cada decisión se guarda al instante y las imágenes permanecen en este equipo.</small>
+    </aside>
+  </main>
+  <script>
+    let state,index=0; const $=id=>document.getElementById(id); const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+    async function load(){state=await(await fetch('/api/state')).json();const pending=state.rows.findIndex(r=>!state.reviews[r.review_id]);index=pending<0?0:pending;render()}
+    function render(){const row=state.rows[index],review=state.reviews[row.review_id]||{};$('image').src=row.image_url;$('position').textContent=`${index+1} / ${state.rows.length} · ${row.review_id}`;
+      const items=[['Etiqueta actual',row.true_label],['Predicción IA',`${(Number(row.probability_target_lesion)*100).toFixed(1)}% target_lesion`],['Etiqueta original',`${row.original_annotation_source} · ${row.original_annotation_reviewer}`],['Fuente',row.source],['Motivo de revisión',row.assisted_rationale]];
+      $('meta').innerHTML=items.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');$('confidence').value=review.confidence||'medium';$('notes').value=review.rationale?.startsWith('focused_human_recheck:')?'':(review.rationale||'');$('notice').textContent=review.decision?`Guardado: ${review.decision}`:'Pendiente de decisión';updateStats()}
+    function updateStats(){const s=state.summary;$('stats').textContent=`${s.reviewed}/${s.total} revisadas`;$('bar').style.width=`${s.total?s.reviewed*100/s.total:0}%`}
+    async function save(decision){const row=state.rows[index],response=await fetch(`/api/review/${encodeURIComponent(row.review_id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({decision,confidence:$('confidence').value,rationale:$('notes').value})});const body=await response.json();if(!response.ok){$('notice').textContent=body.error||'Error al guardar';return}state.reviews[row.review_id]=body.review;state.summary=body.summary;nextPending()}
+    function move(delta){index=(index+delta+state.rows.length)%state.rows.length;render()} function nextPending(){for(let i=1;i<=state.rows.length;i++){const n=(index+i)%state.rows.length;if(!state.reviews[state.rows[n].review_id]){index=n;render();return}}render();$('notice').textContent='Revisión completa. Ya puedes cerrar esta pestaña.'}
+    document.querySelectorAll('[data-decision]').forEach(b=>b.addEventListener('click',()=>save(b.dataset.decision)));$('previous').onclick=()=>move(-1);$('next').onclick=()=>move(1);
+    document.addEventListener('keydown',e=>{if(['TEXTAREA','SELECT','INPUT'].includes(document.activeElement.tagName))return;if(e.key==='1')save('keep_label');if(e.key==='2')save('correct_to_target');if(e.key.toLowerCase()==='a')save('ambiguous');if(e.key==='ArrowLeft')move(-1);if(e.key==='ArrowRight')move(1)});load().catch(e=>$('notice').textContent=e.message);
+  </script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SkinCare · Revisión de capturas</title>
+  <style>
+    :root { color-scheme:dark; --bg:#0b0d0c; --panel:#151917; --line:#303934; --text:#eef5f0; --muted:#9eaaa3; --green:#45b95c; --red:#ff654f; --amber:#eab642; --blue:#62a9ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui,sans-serif; }
+    header { position:sticky; top:0; z-index:3; display:flex; gap:20px; align-items:center; padding:12px 20px; background:#101311f2; border-bottom:1px solid var(--line); }
+    h1 { margin:0; font-size:18px; }
+    .progress { flex:1; height:8px; border-radius:8px; background:#29302c; overflow:hidden; }
+    .progress span { display:block; height:100%; background:var(--green); }
+    .stats { white-space:nowrap; color:var(--muted); }
+    main { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(390px,.65fr); gap:18px; min-height:calc(100vh - 62px); padding:18px; }
+    .viewer,.panel { background:var(--panel); border:1px solid var(--line); border-radius:16px; }
+    .viewer { position:relative; display:flex; align-items:center; justify-content:center; min-height:620px; overflow:hidden; }
+    .image-shell { width:min(100%,calc(100vh - 120px)); aspect-ratio:1; overflow:hidden; background:#080908; }
+    .image-shell img { width:100%; height:100%; object-fit:cover; }
+    .image-shell.full { width:100%; height:calc(100vh - 100px); aspect-ratio:auto; }
+    .image-shell.full img { object-fit:contain; }
+    .view-badge { position:absolute; left:14px; top:14px; z-index:2; padding:7px 10px; border-radius:8px; background:#080a08d9; color:var(--muted); }
+    #toggle-view { position:absolute; right:14px; top:14px; z-index:2; }
+    .missing { color:var(--amber); max-width:460px; padding:30px; text-align:center; }
+    .panel { padding:18px; overflow:auto; }
+    .eyebrow { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+    h2 { margin:4px 0 12px; font-size:23px; }
+    .proposal { padding:10px; background:#202622; border-radius:10px; color:var(--muted); }
+    dl { display:grid; grid-template-columns:105px 1fr; gap:7px 10px; }
+    dt { color:var(--muted); } dd { margin:0; overflow-wrap:anywhere; }
+    label { display:block; margin-top:10px; color:var(--muted); }
+    textarea,select { width:100%; margin-top:5px; padding:10px; color:var(--text); background:#0d100e; border:1px solid var(--line); border-radius:8px; }
+    textarea { min-height:62px; resize:vertical; }
+    button,a.button { padding:10px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:#252c28; cursor:pointer; text-align:center; text-decoration:none; }
+    button:hover,a.button:hover { filter:brightness(1.18); }
+    button:disabled { opacity:.35; cursor:not-allowed; filter:none; }
+    button.active { outline:2px solid var(--blue); background:#26374a; }
+    .step { margin-top:14px; padding:13px; border:1px solid var(--line); border-radius:12px; }
+    .step h3 { margin:0 0 4px; font-size:17px; }
+    .step p { margin:0 0 10px; color:var(--muted); font-size:13px; }
+    .quality-buttons,.semantic-buttons { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    #quality-pass,.semantic { border-color:#348f48; }
+    #quality-fail,.ambiguous { border-color:#b64b3b; }
+    .semantic-guide { display:grid; gap:5px; margin:9px 0; color:var(--muted); font-size:12px; }
+    .semantic-guide strong { color:var(--text); }
+    details { margin-top:10px; color:var(--muted); }
+    .nav { display:flex; gap:8px; margin-top:14px; }
+    .nav button { flex:1; }
+    .notice { min-height:22px; margin-top:10px; color:var(--amber); }
+    .shortcut { color:var(--muted); font-size:12px; }
+    @media(max-width:900px){ main{grid-template-columns:1fr}.viewer{min-height:50vh}.image-shell,.image-shell.full{width:min(100%,70vh);height:auto;aspect-ratio:1}.image-shell.full img{object-fit:contain} }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SkinCare · revisión local</h1>
+    <div class="progress"><span id="bar"></span></div>
+    <div class="stats" id="stats">Cargando…</div>
+    <a class="button" href="/api/reviews.csv">Descargar CSV</a>
+  </header>
+  <main>
+    <section class="viewer" id="viewer"></section>
+    <aside class="panel">
+      <div class="eyebrow" id="position"></div>
+      <h2 id="proposed"></h2>
+      <div class="proposal" id="reason"></div>
+      <dl id="metadata"></dl>
+
+      <section class="step">
+        <h3>1 · Calidad de captura</h3>
+        <p>¿Hay detalle suficiente para que esta fotografía llegue al modelo posterior?</p>
+        <div class="quality-buttons">
+          <button id="quality-pass">V · Calidad suficiente</button>
+          <button id="quality-fail">X · Excluir por calidad</button>
+        </div>
+        <label>Fallo de calidad
+          <select id="quality-reason">
+            <option value="">Selecciona un motivo</option>
+            <option value="bad_framing">Encuadre incorrecto</option>
+            <option value="too_far">Lunar demasiado pequeño o lejano</option>
+            <option value="blur">Desenfoque</option>
+            <option value="bad_light">Iluminación inadecuada</option>
+            <option value="low_resolution">Resolución insuficiente</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="step" id="semantic-step">
+        <h3>2 · Contenido del recorte central</h3>
+        <p>Solo se habilita cuando la calidad es suficiente. No diagnostiques la lesión.</p>
+        <div class="semantic-guide">
+          <span><strong>1 Lunar:</strong> objetivo parecido a un lunar, centrado y con detalle.</span>
+          <span><strong>2 Piel:</strong> piel utilizable sin lunar centrado; incluye heridas, cicatrices e inflamación.</span>
+          <span><strong>3 Sin piel:</strong> objetos, muebles, ropa o fondos.</span>
+        </div>
+        <div class="semantic-buttons">
+          <button class="semantic" data-label="target_lesion">1 · Lunar objetivo</button>
+          <button class="semantic" data-label="skin_without_target">2 · Piel sin objetivo</button>
+          <button class="semantic" data-label="no_skin">3 · Sin piel</button>
+          <button class="ambiguous" id="ambiguous">A · Ambigua</button>
+        </div>
+      </section>
+
+      <label>Notas visuales<textarea id="notes" maxlength="2000"></textarea></label>
+      <details>
+        <summary>Licencia y otros descartes</summary>
+        <label>Revisión de licencia
+          <select id="license-state">
+            <option value="unreviewed">Sin revisar</option>
+            <option value="verified">Verificada en la página original</option>
+            <option value="rejected">Rechazada</option>
+          </select>
+        </label>
+        <label>Notas de licencia<textarea id="license-notes" maxlength="2000"></textarea></label>
+        <label>Otro descarte
+          <select id="other-exclusion">
+            <option value="duplicate">Duplicada</option>
+            <option value="other">Otro</option>
+          </select>
+        </label>
+        <button id="exclude-other">Excluir por este motivo</button>
+      </details>
+
+      <div class="nav"><button id="previous">← Anterior</button><button id="next">Siguiente →</button></div>
+      <div class="notice" id="notice"></div>
+      <p class="shortcut">Atajos: V calidad válida · 1/2/3 clasificar · X fallo de calidad seleccionado · A ambigua · ←/→ navegar.</p>
+    </aside>
+  </main>
+  <script>
+    let state, index = 0, qualityChoice = '', fullView = false;
+    const $ = id => document.getElementById(id);
+    const escapeHtml = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+    async function load(){
+      const response = await fetch('/api/state');
+      state = await response.json();
+      const firstPending = state.rows.findIndex(row => !state.reviews[row.candidate_id] && row.image_available);
+      index = firstPending >= 0 ? firstPending : 0;
+      render();
+    }
+
+    function render(){
+      const row = state.rows[index], review = state.reviews[row.candidate_id] || {};
+      qualityChoice = review.quality_status || '';
+      fullView = false;
+      $('position').textContent = `${index + 1} / ${state.rows.length} · revisor ${state.reviewer_id}`;
+      $('proposed').textContent = `Propuesta: ${row.proposed_label}`;
+      $('reason').textContent = row.proposal_reason;
+      $('viewer').innerHTML = row.image_available
+        ? `<span class="view-badge">Recorte cuadrado central que verá el modelo</span><button id="toggle-view">Ver imagen completa</button><div class="image-shell" id="image-shell"><img src="${row.image_url}" alt="Candidato ${escapeHtml(row.candidate_id)}"></div>`
+        : '<div class="missing"><h3>Imagen no disponible localmente</h3><p>Configura la raíz de esta fuente con <code>--source-root FUENTE=RUTA</code>. No se registrará ningún descarte por esta ausencia.</p></div>';
+      if (row.image_available) $('toggle-view').addEventListener('click', toggleView);
+      const details = [['Fuente',row.source],['Dataset',row.source_dataset],['Grupo',row.group_id],['Condición',row.condition_labels],['Licencia',row.license],['Estado licencia',row.license_status],['Autor',row.author],['Título',row.title]];
+      $('metadata').innerHTML = details.filter(x => x[1]).map(([k,v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`).join('');
+      if(/^https?:\/\//.test(row.original_landing_url || '')) $('metadata').insertAdjacentHTML('beforeend', `<dt>Página original</dt><dd><a href="${escapeHtml(row.original_landing_url)}" target="_blank" rel="noopener noreferrer">Abrir atribución</a></dd>`);
+      $('quality-reason').value = review.quality_reason || '';
+      $('notes').value = review.reviewer_notes || '';
+      $('license-state').value = review.license_review_status || 'unreviewed';
+      $('license-notes').value = review.license_review_notes || '';
+      $('notice').textContent = review.decision ? savedMessage(review) : 'Primero evalúa la calidad.';
+      syncControls();
+      updateStats();
+    }
+
+    function savedMessage(review){
+      if (review.quality_status === 'fail') return `Guardado: excluida por calidad · ${review.quality_reason}`;
+      if (review.decision === 'exclude') return `Guardado: excluida · ${review.exclusion_reason}`;
+      return `Guardado: calidad válida · ${review.review_label}`;
+    }
+
+    function toggleView(){
+      fullView = !fullView;
+      $('image-shell').classList.toggle('full', fullView);
+      $('toggle-view').textContent = fullView ? 'Ver recorte central' : 'Ver imagen completa';
+      document.querySelector('.view-badge').textContent = fullView ? 'Imagen completa · solo como contexto' : 'Recorte cuadrado central que verá el modelo';
+    }
+
+    function chooseQualityPass(){
+      qualityChoice = 'pass';
+      $('quality-reason').value = '';
+      $('notice').textContent = 'Calidad suficiente. Ahora elige la clase semántica.';
+      syncControls();
+    }
+
+    function syncControls(){
+      $('quality-pass').classList.toggle('active', qualityChoice === 'pass');
+      $('quality-fail').classList.toggle('active', qualityChoice === 'fail');
+      document.querySelectorAll('.semantic,[id="ambiguous"]').forEach(button => button.disabled = qualityChoice !== 'pass');
+      $('semantic-step').style.opacity = qualityChoice === 'pass' ? '1' : '.58';
+    }
+
+    function updateStats(){
+      const reviewed = Object.keys(state.reviews).length, total = state.rows.length;
+      $('stats').textContent = `${reviewed}/${total} revisadas · ${state.summary.available_images} imágenes disponibles`;
+      $('bar').style.width = `${total ? reviewed * 100 / total : 0}%`;
+    }
+
+    async function savePayload(payload){
+      const row = state.rows[index];
+      if (!row.image_available){ $('notice').textContent='No se puede revisar sin imagen.'; return; }
+      payload.reviewer_notes = $('notes').value;
+      payload.license_review_status = $('license-state').value;
+      payload.license_review_notes = $('license-notes').value;
+      const response = await fetch(`/api/review/${encodeURIComponent(row.candidate_id)}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const body = await response.json();
+      if (!response.ok){ $('notice').textContent=body.error || 'Error al guardar.'; return; }
+      state.reviews[row.candidate_id] = body.review; state.summary = body.summary;
+      nextPending();
+    }
+
+    function saveQualityFailure(){
+      const reason = $('quality-reason').value;
+      if (!reason){ $('notice').textContent='Selecciona el fallo de calidad.'; return; }
+      qualityChoice = 'fail'; syncControls();
+      savePayload({quality_status:'fail', quality_reason:reason, decision:'exclude', review_label:'', exclusion_reason:reason});
+    }
+
+    function saveSemantic(label){
+      if (qualityChoice !== 'pass'){ $('notice').textContent='Marca primero que la calidad es suficiente.'; return; }
+      savePayload({quality_status:'pass', quality_reason:'', decision:'include', review_label:label, exclusion_reason:''});
+    }
+
+    function saveAmbiguous(){
+      if (qualityChoice !== 'pass'){ $('notice').textContent='Evalúa primero la calidad.'; return; }
+      savePayload({quality_status:'pass', quality_reason:'', decision:'exclude', review_label:'', exclusion_reason:'ambiguous'});
+    }
+
+    function saveOtherExclusion(){
+      savePayload({quality_status:'pass', quality_reason:'', decision:'exclude', review_label:'', exclusion_reason:$('other-exclusion').value});
+    }
+
+    function move(delta){ index=(index+delta+state.rows.length)%state.rows.length; render(); }
+    function nextPending(){
+      for(let step=1; step<=state.rows.length; step++){
+        const candidate=(index+step)%state.rows.length, row=state.rows[candidate];
+        if(row.image_available && !state.reviews[row.candidate_id]){ index=candidate; render(); return; }
+      }
+      render(); $('notice').textContent='No quedan imágenes disponibles pendientes.';
+    }
+
+    $('quality-pass').addEventListener('click', chooseQualityPass);
+    $('quality-fail').addEventListener('click', saveQualityFailure);
+    document.querySelectorAll('[data-label]').forEach(button => button.addEventListener('click', () => saveSemantic(button.dataset.label)));
+    $('ambiguous').addEventListener('click', saveAmbiguous);
+    $('exclude-other').addEventListener('click', saveOtherExclusion);
+    $('previous').addEventListener('click',()=>move(-1)); $('next').addEventListener('click',()=>move(1));
+    document.addEventListener('keydown', event => {
+      if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+      if(event.key.toLowerCase()==='v') chooseQualityPass();
+      if(event.key==='1') saveSemantic('target_lesion');
+      if(event.key==='2') saveSemantic('skin_without_target');
+      if(event.key==='3') saveSemantic('no_skin');
+      if(event.key.toLowerCase()==='x') saveQualityFailure();
+      if(event.key.toLowerCase()==='a') saveAmbiguous();
+      if(event.key==='ArrowLeft') move(-1); if(event.key==='ArrowRight') move(1);
+    });
+    load().catch(error => $('notice').textContent=error.message);
+  </script>
+</body>
+</html>
