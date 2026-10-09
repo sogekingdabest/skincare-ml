@@ -4,9 +4,9 @@ tensorflow
 numpy
 pandas
 scikit-learn
+Pillow
 opencv-python-headless
 matplotlib
 seaborn
 tqdm
 jupyter
-

@@ -36,7 +36,7 @@ El flujo cubre:
 2. entrenamiento inicial a 256 × 256 píxeles;
 3. fine-tuning parcial de EfficientNetV2-B0;
 4. evaluación con métricas adecuadas para clases desbalanceadas;
-5. un experimento independiente de *progressive resizing* a 384 × 384;
+5. un experimento opcional de *progressive resizing* a 384 × 384;
 6. exportación del mejor checkpoint de 256 × 256 a TensorFlow Lite.
 
 Kaggle es el entorno de referencia. Las versiones exactas de los datasets, sus
@@ -50,11 +50,17 @@ Se importan las dependencias, se registra el entorno de ejecución y se fijan
 semillas para Python, NumPy y TensorFlow. Una misma semilla reduce variaciones,
 pero no garantiza resultados idénticos entre versiones de CUDA, cuDNN,
 TensorFlow o hardware distinto.
+
+`RUN_384_EXPERIMENT=False` controla el experimento opcional de mayor resolución.
+La ejecución móvil de referencia conserva este valor desactivado.
 """,
     2: """## 2. Lectura, normalización y aumento de datos
 
 Cada TFRecord contiene la imagen, la etiqueta binaria y tres metadatos. Las
 imágenes JPEG se convierten a `float32` y se escalan al intervalo `[0, 1]`.
+La transformación requerida por EfficientNetV2, de `[0, 1]` a `[-1, 1]`, forma
+parte del propio modelo para que Keras y TensorFlow Lite compartan exactamente
+el mismo contrato de entrada.
 Los metadatos se transforman en un vector de tres componentes.
 
 El aumento de datos se aplica únicamente a la imagen: reflexiones, pequeños
@@ -91,6 +97,9 @@ Después de la fusión, una capa sigmoide produce una puntuación binaria.
 - imagen RGB `float32`: `[batch, 256, 256, 3]`, escalada a `[0, 1]`;
 - metadatos `float32`: `[batch, 3]`;
 - salida sigmoide: `[batch, 1]`.
+
+El backbone se crea con `include_preprocessing=False` y recibe `[-1, 1]`
+mediante una capa `Rescaling` incluida en el grafo exportado.
 """,
     10: """## 6. Fase 1 — Entrenamiento inicial
 
@@ -124,22 +133,24 @@ Esta sección crea un pipeline independiente con imágenes de mayor resolución 
 un batch menor. Se libera memoria antes de construir el nuevo modelo.
 
 La fase de 384 × 384 es experimental: parte del checkpoint de pesos de la fase
-inicial y **no** es el modelo exportado a TensorFlow Lite por este notebook.
-Mantener esta frontera explícita evita atribuir sus resultados al artefacto
-móvil de 256 × 256.
+2 y **no** es el modelo exportado a TensorFlow Lite por este notebook. Está
+desactivada por defecto mediante `RUN_384_EXPERIMENT=False` para que la
+ejecución móvil de referencia no consuma GPU en un experimento independiente.
 """,
     18: """## 10. Entrenamiento experimental a 384 × 384
 
-Se construye una nueva instancia de la arquitectura, se cargan los pesos
-compatibles de la fase inicial y se ajustan las últimas capas con un learning
-rate reducido. Su checkpoint se guarda de forma separada.
+Cuando se habilita, se construye una nueva instancia de la arquitectura, se
+cargan los pesos del mejor checkpoint fine-tuned de 256 píxeles y se ajustan
+las últimas capas con un learning rate reducido. Su checkpoint se guarda de
+forma separada.
 """,
     20: """## 11. Evaluación experimental a 384 × 384
 
 La evaluación repite el mismo criterio de sensibilidad mínima y el mismo
 conjunto de métricas. Estos resultados deben compararse con los de 256 × 256
 solo después de verificar que ambos pipelines usan exactamente el mismo split
-y contrato de metadatos.
+y contrato de metadatos. Si el experimento está desactivado, `metrics.json`
+registra explícitamente su estado como `skipped`.
 """,
     22: """## 12. Exportación del modelo de 256 × 256
 
@@ -236,21 +247,41 @@ def prepare_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
         "import warnings\n",
         "import warnings\nimport platform\nimport random\n",
     )
-    environment = replace_once(
-        environment,
+    if 'print(f"Python: {platform.python_version()}")' not in environment:
+        environment = replace_once(
+            environment,
+            "warnings.filterwarnings('ignore')\n",
+            (
+                'print(f"Python: {platform.python_version()}")\n'
+                'print(f"TensorFlow: {tf.__version__}")\n'
+                'print(f"NumPy: {np.__version__}")\n'
+            ),
+        )
+    environment = environment.replace(
         "warnings.filterwarnings('ignore')\n",
-        (
-            "warnings.filterwarnings('ignore')\n\n"
-            'print(f"Python: {platform.python_version()}")\n'
-            'print(f"TensorFlow: {tf.__version__}")\n'
-            'print(f"NumPy: {np.__version__}")\n'
-        ),
+        "",
     )
-    environment = replace_once(
-        environment,
-        "SEED = 42\nnp.random.seed(SEED)\n",
-        "SEED = 42\nrandom.seed(SEED)\nnp.random.seed(SEED)\n",
-    )
+    if "random.seed(SEED)" not in environment:
+        environment = replace_once(
+            environment,
+            "np.random.seed(SEED)\n",
+            "random.seed(SEED)\nnp.random.seed(SEED)\n",
+        )
+    if "RUN_384_EXPERIMENT = False" not in environment:
+        environment = replace_once(
+            environment,
+            "SEED = 42\n",
+            "SEED = 42\nRUN_384_EXPERIMENT = False\n",
+        )
+    if "enable_op_determinism" not in environment:
+        environment = replace_once(
+            environment,
+            "tf.random.set_seed(SEED)",
+            (
+                "tf.random.set_seed(SEED)\n"
+                "tf.config.experimental.enable_op_determinism()\n"
+            ),
+        )
     cells[1]["source"] = source_lines(environment)
 
     data_256 = "".join(cells[5]["source"])

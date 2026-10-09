@@ -43,6 +43,132 @@ splits, umbrales, matrices de confusión, paridad, versiones y hashes SHA-256.
 
 
 CANONICAL_CODE_CELLS = {
+    3: r"""
+def decode_image(image_data):
+    image = tf.image.decode_jpeg(image_data, channels=3)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+    image = tf.reshape(image, [*IMAGE_SIZE, 3])
+    return image
+
+
+def read_labeled_tfrecord(example):
+    labeled_tfrecord_format = {
+        'image': tf.io.FixedLenFeature([], tf.string),
+        'target': tf.io.FixedLenFeature([], tf.int64),
+        'age_approx': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
+        'sex': tf.io.FixedLenFeature([], tf.int64, default_value=-1),
+        'anatom_site_general_challenge': tf.io.FixedLenFeature(
+            [],
+            tf.int64,
+            default_value=-1,
+        ),
+    }
+    example = tf.io.parse_single_example(example, labeled_tfrecord_format)
+
+    image = decode_image(example['image'])
+    age = tf.cast(example['age_approx'], tf.float32) / 100.0
+    sex = tf.cast(example['sex'], tf.float32)
+    site = tf.cast(
+        example['anatom_site_general_challenge'],
+        tf.float32,
+    ) / 7.0
+
+    metadata = tf.stack([age, sex, site])
+    target = tf.reshape(
+        tf.cast(example['target'], tf.float32),
+        [1],
+    )
+    return (image, metadata), target
+
+
+def data_augment(inputs, target):
+    image, metadata = inputs
+
+    image = tf.image.random_flip_left_right(image)
+    image = tf.image.random_flip_up_down(image)
+    image = tf.image.random_hue(image, max_delta=0.01)
+    image = tf.image.random_saturation(image, lower=0.7, upper=1.3)
+    image = tf.image.random_contrast(image, lower=0.8, upper=1.2)
+    image = tf.image.random_brightness(image, max_delta=0.1)
+
+    # Colour transforms can leave the documented input interval.
+    image = tf.clip_by_value(image, 0.0, 1.0)
+    return (image, metadata), target
+""",
+    7: r"""
+def focal_loss(gamma=2.0, alpha=0.75):
+    return tf.keras.losses.BinaryFocalCrossentropy(
+        apply_class_balancing=True,
+        alpha=alpha,
+        gamma=gamma,
+        from_logits=False,
+    )
+""",
+    9: r"""
+def build_multimodal_model(img_size=256, num_metadata=3):
+    # External image contract: float32 RGB values in [0, 1].
+    input_img = layers.Input(
+        shape=(img_size, img_size, 3),
+        name='input_img',
+    )
+
+    # EfficientNetV2 without its built-in preprocessing expects [-1, 1].
+    # Keeping this conversion inside the model makes the Keras and TFLite
+    # preprocessing contracts identical.
+    efficientnet_input = layers.Rescaling(
+        scale=2.0,
+        offset=-1.0,
+        name='efficientnet_input_rescaling',
+    )(input_img)
+    base_model = tf.keras.applications.EfficientNetV2B0(
+        input_shape=(img_size, img_size, 3),
+        include_top=False,
+        include_preprocessing=False,
+        weights='imagenet',
+    )
+    base_model.trainable = False
+
+    # Keep BatchNormalization statistics in inference mode even after the
+    # convolutional layers are partially unfrozen for fine-tuning.
+    x_img = base_model(efficientnet_input, training=False)
+    x_img = layers.GlobalAveragePooling2D()(x_img)
+
+    input_meta = layers.Input(
+        shape=(num_metadata,),
+        name='input_meta',
+    )
+    x_meta = layers.Dense(16, activation='relu')(input_meta)
+    x_meta = layers.BatchNormalization()(x_meta)
+
+    concat = layers.Concatenate()([x_img, x_meta])
+    x = layers.Dense(128, activation='relu')(concat)
+    x = layers.Dropout(0.3)(x)
+    output = layers.Dense(1, activation='sigmoid', name='output')(x)
+
+    model = models.Model(
+        inputs=[input_img, input_meta],
+        outputs=output,
+    )
+    return model, base_model
+
+
+model, base_model = build_multimodal_model(img_size=256)
+
+preprocessing_probe = model.get_layer('efficientnet_input_rescaling')(
+    tf.constant([0.0, 0.5, 1.0], dtype=tf.float32)
+)
+np.testing.assert_allclose(
+    preprocessing_probe.numpy(),
+    [-1.0, 0.0, 1.0],
+    atol=1e-7,
+)
+
+print(f"Parámetros totales: {model.count_params():,}")
+print(
+    "Parámetros entrenables: "
+    f"{sum(tf.size(weight).numpy() for weight in model.trainable_weights):,}"
+)
+""",
     5: r"""
 IMAGE_SIZE = [256, 256]
 BATCH_SIZE = 64
@@ -121,6 +247,19 @@ assert_disjoint_shards(
 )
 
 
+def count_tfrecord_items(filenames):
+    total = 0
+    for filename in filenames:
+        shard_name = Path(filename).stem
+        try:
+            total += int(shard_name.rsplit('-', maxsplit=1)[1])
+        except (IndexError, ValueError) as error:
+            raise ValueError(
+                f'No se pudo obtener el número de registros de {filename}.'
+            ) from error
+    return total
+
+
 def collect_patient_ids(filenames):
     patient_spec = {
         'patient_id': tf.io.FixedLenFeature([], tf.int64, default_value=-1)
@@ -193,8 +332,12 @@ def make_dataset(filenames, batch_size, training=False, cache=False):
     dataset = dataset.map(read_labeled_tfrecord, num_parallel_calls=AUTO)
     if training:
         dataset = dataset.map(data_augment, num_parallel_calls=AUTO)
+        dataset = dataset.shuffle(
+            2048,
+            seed=SEED,
+            reshuffle_each_iteration=True,
+        )
         dataset = dataset.repeat()
-        dataset = dataset.shuffle(2048, seed=SEED)
     dataset = dataset.batch(batch_size)
     if cache:
         dataset = dataset.cache()
@@ -209,19 +352,199 @@ train_generator = make_dataset(
 val_generator = make_dataset(
     VALIDATION_FILENAMES,
     BATCH_SIZE,
-    cache=True,
 )
 test_generator = make_dataset(TEST_FILENAMES, BATCH_SIZE)
 
-NUM_TRAINING_IMAGES = len(TRAINING_FILENAMES) * 2071
-NUM_VALIDATION_IMAGES = len(VALIDATION_FILENAMES) * 2071
-NUM_TEST_IMAGES = len(TEST_FILENAMES) * 2071
-STEPS_PER_EPOCH = NUM_TRAINING_IMAGES // BATCH_SIZE
+NUM_TRAINING_IMAGES = count_tfrecord_items(TRAINING_FILENAMES)
+NUM_VALIDATION_IMAGES = count_tfrecord_items(VALIDATION_FILENAMES)
+NUM_TEST_IMAGES = count_tfrecord_items(TEST_FILENAMES)
+STEPS_PER_EPOCH = (
+    NUM_TRAINING_IMAGES + BATCH_SIZE - 1
+) // BATCH_SIZE
 
-print(f"Imágenes de entrenamiento aproximadas: {NUM_TRAINING_IMAGES:,}")
-print(f"Imágenes de validación aproximadas: {NUM_VALIDATION_IMAGES:,}")
-print(f"Imágenes de test aproximadas: {NUM_TEST_IMAGES:,}")
+print(f"Imágenes de entrenamiento: {NUM_TRAINING_IMAGES:,}")
+print(f"Imágenes de validación: {NUM_VALIDATION_IMAGES:,}")
+print(f"Imágenes de test: {NUM_TEST_IMAGES:,}")
 print(f"Pasos por época: {STEPS_PER_EPOCH}")
+""",
+    11: r"""
+EPOCHS_FASE_1 = 5
+
+initial_learning_rate = 0.001
+lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+    initial_learning_rate,
+    decay_steps=STEPS_PER_EPOCH * EPOCHS_FASE_1,
+    alpha=0.01,
+)
+
+optimizer = tf.keras.optimizers.Adam(
+    learning_rate=lr_schedule,
+    clipnorm=1.0,
+)
+
+model.compile(
+    optimizer=optimizer,
+    loss=focal_loss(gamma=2.0, alpha=0.75),
+    metrics=[
+        'accuracy',
+        tf.keras.metrics.AUC(name='auc', curve='ROC'),
+        tf.keras.metrics.AUC(name='pr_auc', curve='PR'),
+        tf.keras.metrics.Precision(name='precision'),
+        tf.keras.metrics.Recall(name='recall'),
+    ],
+)
+
+
+def validate_batch_contract(dataset, predictive_model, split_name):
+    (images, metadata), labels = next(iter(dataset.take(1)))
+
+    tf.debugging.assert_type(images, tf.float32)
+    tf.debugging.assert_type(metadata, tf.float32)
+    tf.debugging.assert_type(labels, tf.float32)
+    tf.debugging.assert_shapes(
+        [
+            (images, (None, IMAGE_SIZE[0], IMAGE_SIZE[1], 3)),
+            (metadata, (None, 3)),
+            (labels, (None, 1)),
+        ]
+    )
+    tf.debugging.assert_all_finite(images, f'{split_name}: imágenes no finitas')
+    tf.debugging.assert_all_finite(
+        metadata,
+        f'{split_name}: metadatos no finitos',
+    )
+    tf.debugging.assert_all_finite(labels, f'{split_name}: etiquetas no finitas')
+    tf.debugging.assert_greater_equal(images, 0.0)
+    tf.debugging.assert_less_equal(images, 1.0)
+    tf.debugging.assert_equal(
+        tf.reduce_all(
+            tf.logical_or(tf.equal(labels, 0.0), tf.equal(labels, 1.0))
+        ),
+        True,
+        message=f'{split_name}: se encontraron etiquetas distintas de 0/1',
+    )
+
+    predictions = predictive_model([images, metadata], training=False)
+    tf.debugging.assert_shapes([(predictions, (None, 1))])
+    tf.debugging.assert_all_finite(
+        predictions,
+        f'{split_name}: predicciones no finitas',
+    )
+    print(
+        f"Preflight {split_name}: OK | "
+        f"batch={images.shape[0]} | "
+        f"rango=[{tf.reduce_min(images).numpy():.4f}, "
+        f"{tf.reduce_max(images).numpy():.4f}]"
+    )
+
+
+validate_batch_contract(train_generator, model, 'training')
+validate_batch_contract(val_generator, model, 'validation')
+
+print("Modelo compilado y preflight superado")
+
+os.makedirs('checkpoints', exist_ok=True)
+
+callbacks = [
+    ModelCheckpoint(
+        'checkpoints/best_model_efficientnet.weights.h5',
+        monitor='val_pr_auc',
+        mode='max',
+        save_best_only=True,
+        save_weights_only=True,
+        verbose=1,
+    ),
+    EarlyStopping(
+        monitor='val_pr_auc',
+        patience=3,
+        restore_best_weights=True,
+        mode='max',
+        verbose=1,
+    ),
+]
+
+print("\n" + "=" * 60)
+print("FASE 1: ENTRENAMIENTO INICIAL (BACKBONE CONGELADO)")
+print("=" * 60)
+
+history_phase1 = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    steps_per_epoch=STEPS_PER_EPOCH,
+    epochs=EPOCHS_FASE_1,
+    callbacks=callbacks,
+    verbose=1,
+)
+""",
+    13: r"""
+print("\n" + "=" * 60)
+print("FASE 2: FINE-TUNING PARCIAL")
+print("=" * 60)
+
+base_model.trainable = True
+fine_tune_at = len(base_model.layers) - 50
+
+for layer in base_model.layers[:fine_tune_at]:
+    layer.trainable = False
+for layer in base_model.layers[fine_tune_at:]:
+    if isinstance(layer, layers.BatchNormalization):
+        layer.trainable = False
+
+trainable_backbone_layers = [
+    layer for layer in base_model.layers if layer.trainable
+]
+if not trainable_backbone_layers:
+    raise RuntimeError('El fine-tuning no dejó capas entrenables en el backbone.')
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(
+        learning_rate=1e-5,
+        clipnorm=1.0,
+    ),
+    loss=focal_loss(gamma=2.0, alpha=0.75),
+    metrics=[
+        'accuracy',
+        tf.keras.metrics.AUC(name='auc', curve='ROC'),
+        tf.keras.metrics.AUC(name='pr_auc', curve='PR'),
+        tf.keras.metrics.Precision(name='precision'),
+        tf.keras.metrics.Recall(name='recall'),
+    ],
+)
+
+trainable_parameters = sum(
+    int(tf.size(weight).numpy()) for weight in model.trainable_weights
+)
+print(f"Capas entrenables del backbone: {len(trainable_backbone_layers)}")
+print(f"Parámetros entrenables: {trainable_parameters:,}")
+
+EPOCHS_FASE_2 = 7
+
+callbacks_fase2 = [
+    ModelCheckpoint(
+        'checkpoints/best_model_multimodal.keras',
+        monitor='val_pr_auc',
+        mode='max',
+        save_best_only=True,
+        verbose=1,
+    ),
+    EarlyStopping(
+        monitor='val_pr_auc',
+        patience=4,
+        restore_best_weights=True,
+        mode='max',
+        verbose=1,
+    ),
+]
+
+history_phase2 = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    steps_per_epoch=STEPS_PER_EPOCH,
+    epochs=EPOCHS_FASE_1 + EPOCHS_FASE_2,
+    initial_epoch=EPOCHS_FASE_1,
+    callbacks=callbacks_fase2,
+    verbose=1,
+)
 """,
     15: r"""
 def collect_predictions(predictive_model, dataset):
@@ -331,6 +654,10 @@ best_model_256 = tf.keras.models.load_model(
     'checkpoints/best_model_multimodal.keras',
     compile=False,
 )
+if RUN_384_EXPERIMENT:
+    best_model_256.save_weights(
+        'checkpoints/best_model_multimodal_256.weights.h5'
+    )
 
 print('Seleccionando el umbral exclusivamente sobre validación (256 px)...')
 y_validation_true_256, y_validation_pred_256 = collect_predictions(
@@ -354,102 +681,6 @@ METRICS_KERAS_256_TEST = evaluate_model_comprehensive(
     y_test_pred_keras_256,
     THRESHOLD_256,
     model_name='keras_multimodal_256',
-    split_name='test',
-)
-""",
-    17: r"""
-print("Limpiando memoria para Progressive Resizing...")
-TEST_FILENAMES_256 = list(TEST_FILENAMES)
-del train_generator
-del val_generator
-del test_generator
-gc.collect()
-K.clear_session()
-
-IMAGE_SIZE = [384, 384]
-BATCH_SIZE = 16
-
-GCS_PATH_2020_384 = '/kaggle/input/datasets/cdeotte/melanoma-384x384'
-GCS_PATH_2019_384 = '/kaggle/input/datasets/cdeotte/isic2019-384x384'
-
-FILES_2020_384 = sorted(
-    tf.io.gfile.glob(GCS_PATH_2020_384 + '/train*.tfrec')
-)
-FILES_2019_384 = sorted(
-    tf.io.gfile.glob(GCS_PATH_2019_384 + '/train*.tfrec')
-)
-
-if not FILES_2020_384 or not FILES_2019_384:
-    raise FileNotFoundError(
-        'No se encontraron los TFRecords de 384 px. '
-        'Adjunta los datasets indicados en docs/DATASETS.md.'
-    )
-
-(
-    TRAINING_FILENAMES_2020_384,
-    VALIDATION_FILENAMES_384,
-    TEST_FILENAMES_384,
-) = split_tfrecord_shards(FILES_2020_384)
-TRAINING_FILENAMES_384 = TRAINING_FILENAMES_2020_384 + FILES_2019_384
-
-assert_disjoint_shards(
-    TRAINING_FILENAMES_2020_384,
-    VALIDATION_FILENAMES_384,
-    TEST_FILENAMES_384,
-)
-if len(FILES_2020_384) != len(FILES_2020):
-    raise RuntimeError(
-        'Las resoluciones 256 y 384 no contienen el mismo número de shards 2020.'
-    )
-
-train_generator_384 = make_dataset(
-    TRAINING_FILENAMES_384,
-    BATCH_SIZE,
-    training=True,
-)
-val_generator_384 = make_dataset(
-    VALIDATION_FILENAMES_384,
-    BATCH_SIZE,
-)
-test_generator_384 = make_dataset(TEST_FILENAMES_384, BATCH_SIZE)
-
-NUM_TRAINING_IMAGES_384 = len(TRAINING_FILENAMES_384) * 2071
-NUM_VALIDATION_IMAGES_384 = len(VALIDATION_FILENAMES_384) * 2071
-NUM_TEST_IMAGES_384 = len(TEST_FILENAMES_384) * 2071
-STEPS_PER_EPOCH_384 = NUM_TRAINING_IMAGES_384 // BATCH_SIZE
-
-print(f"Shards 384 de entrenamiento: {len(TRAINING_FILENAMES_384)}")
-print(f"Shards 384 de validación: {len(VALIDATION_FILENAMES_384)}")
-print(f"Shards 384 de test: {len(TEST_FILENAMES_384)}")
-print(f"Pasos por época (384 px): {STEPS_PER_EPOCH_384}")
-""",
-    21: r"""
-model_384.load_weights(
-    'checkpoints/best_model_efficientnet_384.weights.h5'
-)
-
-print('Seleccionando el umbral exclusivamente sobre validación (384 px)...')
-y_validation_true_384, y_validation_pred_384 = collect_predictions(
-    model_384,
-    val_generator_384,
-)
-THRESHOLD_SELECTION_384 = find_threshold_for_minimum_sensitivity(
-    y_validation_true_384,
-    y_validation_pred_384,
-)
-THRESHOLD_384 = THRESHOLD_SELECTION_384['threshold']
-print(f"Selección de umbral: {THRESHOLD_SELECTION_384}")
-
-print('Evaluando el checkpoint de 384 px sobre test independiente...')
-y_test_true_384, y_test_pred_keras_384 = collect_predictions(
-    model_384,
-    test_generator_384,
-)
-METRICS_KERAS_384_TEST = evaluate_model_comprehensive(
-    y_test_true_384,
-    y_test_pred_keras_384,
-    THRESHOLD_384,
-    model_name='keras_multimodal_384',
     split_name='test',
 )
 """,
@@ -572,6 +803,23 @@ RUN_METADATA = {
     'python': platform.python_version(),
     'tensorflow': tf.__version__,
     'numpy': np.__version__,
+    'preprocessing': {
+        'color_order': 'RGB',
+        'external_dtype': 'float32',
+        'external_range': [0.0, 1.0],
+        'backbone_range': [-1.0, 1.0],
+        'backbone_rescaling_embedded_in_model': True,
+        'efficientnet_include_preprocessing': False,
+    },
+    'training_256': {
+        'batch_size': 64,
+        'training_images': NUM_TRAINING_IMAGES,
+        'validation_images': NUM_VALIDATION_IMAGES,
+        'test_images': NUM_TEST_IMAGES,
+        'steps_per_epoch': STEPS_PER_EPOCH,
+        'backbone_frozen_phase_1': True,
+        'batch_normalization_inference_mode': True,
+    },
     'split_strategy': {
         'unit': 'tfrecord_shard',
         'training_fraction_2020': 0.70,
@@ -603,17 +851,34 @@ METRICS_256_REPORT = {
         'sha256': sha256_file(tflite_filename),
     },
 }
-METRICS_384_REPORT = {
-    'run': RUN_METADATA,
-    'threshold_selection': THRESHOLD_SELECTION_384,
-    'keras_test': METRICS_KERAS_384_TEST,
-    'artifact': {
-        'filename': 'checkpoints/best_model_efficientnet_384.weights.h5',
-        'sha256': sha256_file(
-            'checkpoints/best_model_efficientnet_384.weights.h5'
-        ),
-    },
-}
+if RUN_384_EXPERIMENT:
+    METRICS_384_REPORT = {
+        'run': RUN_METADATA,
+        'status': 'completed',
+        'dataset': {
+            'batch_size': 16,
+            'training_images': NUM_TRAINING_IMAGES_384,
+            'validation_images': NUM_VALIDATION_IMAGES_384,
+            'test_images': NUM_TEST_IMAGES_384,
+            'steps_per_epoch': STEPS_PER_EPOCH_384,
+        },
+        'threshold_selection': THRESHOLD_SELECTION_384,
+        'keras_test': METRICS_KERAS_384_TEST,
+        'artifact': {
+            'filename': (
+                'checkpoints/best_model_efficientnet_384.weights.h5'
+            ),
+            'sha256': sha256_file(
+                'checkpoints/best_model_efficientnet_384.weights.h5'
+            ),
+        },
+    }
+else:
+    METRICS_384_REPORT = {
+        'run': RUN_METADATA,
+        'status': 'skipped',
+        'reason': 'RUN_384_EXPERIMENT=False',
+    }
 METRICS_REPORT = {
     'schema_version': 1,
     'model_256': METRICS_256_REPORT,
@@ -636,3 +901,194 @@ print(f"SHA-256: {METRICS_256_REPORT['artifact']['sha256']}")
 print(f"Paridad Keras/TFLite: {PARITY_256}")
 """,
 }
+
+
+CANONICAL_CODE_CELLS.update(
+    {
+        17: r"""
+TEST_FILENAMES_256 = list(TEST_FILENAMES)
+
+if RUN_384_EXPERIMENT:
+    print("Limpiando memoria para Progressive Resizing...")
+    del train_generator
+    del val_generator
+    del test_generator
+    gc.collect()
+    K.clear_session()
+
+    IMAGE_SIZE = [384, 384]
+    BATCH_SIZE = 16
+
+    GCS_PATH_2020_384 = '/kaggle/input/datasets/cdeotte/melanoma-384x384'
+    GCS_PATH_2019_384 = '/kaggle/input/datasets/cdeotte/isic2019-384x384'
+
+    FILES_2020_384 = sorted(
+        tf.io.gfile.glob(GCS_PATH_2020_384 + '/train*.tfrec')
+    )
+    FILES_2019_384 = sorted(
+        tf.io.gfile.glob(GCS_PATH_2019_384 + '/train*.tfrec')
+    )
+
+    if not FILES_2020_384 or not FILES_2019_384:
+        raise FileNotFoundError(
+            'No se encontraron los TFRecords de 384 px. '
+            'Adjunta los datasets indicados en docs/DATASETS.md.'
+        )
+
+    (
+        TRAINING_FILENAMES_2020_384,
+        VALIDATION_FILENAMES_384,
+        TEST_FILENAMES_384,
+    ) = split_tfrecord_shards(FILES_2020_384)
+    TRAINING_FILENAMES_384 = (
+        TRAINING_FILENAMES_2020_384 + FILES_2019_384
+    )
+
+    assert_disjoint_shards(
+        TRAINING_FILENAMES_2020_384,
+        VALIDATION_FILENAMES_384,
+        TEST_FILENAMES_384,
+    )
+    if len(FILES_2020_384) != len(FILES_2020):
+        raise RuntimeError(
+            'Las resoluciones 256 y 384 no contienen el mismo número '
+            'de shards 2020.'
+        )
+
+    train_generator_384 = make_dataset(
+        TRAINING_FILENAMES_384,
+        BATCH_SIZE,
+        training=True,
+    )
+    val_generator_384 = make_dataset(
+        VALIDATION_FILENAMES_384,
+        BATCH_SIZE,
+    )
+    test_generator_384 = make_dataset(TEST_FILENAMES_384, BATCH_SIZE)
+
+    NUM_TRAINING_IMAGES_384 = count_tfrecord_items(
+        TRAINING_FILENAMES_384
+    )
+    NUM_VALIDATION_IMAGES_384 = count_tfrecord_items(
+        VALIDATION_FILENAMES_384
+    )
+    NUM_TEST_IMAGES_384 = count_tfrecord_items(TEST_FILENAMES_384)
+    STEPS_PER_EPOCH_384 = (
+        NUM_TRAINING_IMAGES_384 + BATCH_SIZE - 1
+    ) // BATCH_SIZE
+
+    print(f"Imágenes 384 de entrenamiento: {NUM_TRAINING_IMAGES_384:,}")
+    print(f"Imágenes 384 de validación: {NUM_VALIDATION_IMAGES_384:,}")
+    print(f"Imágenes 384 de test: {NUM_TEST_IMAGES_384:,}")
+    print(f"Pasos por época (384 px): {STEPS_PER_EPOCH_384}")
+else:
+    print(
+        'Experimento de 384 px omitido. '
+        'Configura RUN_384_EXPERIMENT=True para ejecutarlo.'
+    )
+""",
+        19: r"""
+if RUN_384_EXPERIMENT:
+    print("\n" + "=" * 60)
+    print("FASE 3: PROGRESSIVE RESIZING (384x384)")
+    print("=" * 60)
+
+    model_384, base_model_384 = build_multimodal_model(img_size=384)
+    model_384.load_weights(
+        'checkpoints/best_model_multimodal_256.weights.h5'
+    )
+
+    base_model_384.trainable = True
+    fine_tune_at_384 = len(base_model_384.layers) - 50
+    for layer in base_model_384.layers[:fine_tune_at_384]:
+        layer.trainable = False
+    for layer in base_model_384.layers[fine_tune_at_384:]:
+        if isinstance(layer, layers.BatchNormalization):
+            layer.trainable = False
+
+    model_384.compile(
+        optimizer=tf.keras.optimizers.Adam(
+            learning_rate=5e-6,
+            clipnorm=1.0,
+        ),
+        loss=focal_loss(gamma=2.0, alpha=0.75),
+        metrics=[
+            'accuracy',
+            tf.keras.metrics.AUC(name='auc', curve='ROC'),
+            tf.keras.metrics.AUC(name='pr_auc', curve='PR'),
+            tf.keras.metrics.Precision(name='precision'),
+            tf.keras.metrics.Recall(name='recall'),
+        ],
+    )
+
+    validate_batch_contract(
+        train_generator_384,
+        model_384,
+        'training_384',
+    )
+    validate_batch_contract(
+        val_generator_384,
+        model_384,
+        'validation_384',
+    )
+
+    EPOCHS_FASE_3 = 2
+    callbacks_phase3 = [
+        ModelCheckpoint(
+            'checkpoints/best_model_efficientnet_384.weights.h5',
+            monitor='val_pr_auc',
+            mode='max',
+            save_best_only=True,
+            save_weights_only=True,
+            verbose=1,
+        )
+    ]
+
+    history_phase3 = model_384.fit(
+        train_generator_384,
+        validation_data=val_generator_384,
+        steps_per_epoch=STEPS_PER_EPOCH_384,
+        epochs=EPOCHS_FASE_3,
+        callbacks=callbacks_phase3,
+        verbose=1,
+    )
+else:
+    print('Entrenamiento de 384 px omitido.')
+""",
+        21: r"""
+if RUN_384_EXPERIMENT:
+    model_384.load_weights(
+        'checkpoints/best_model_efficientnet_384.weights.h5'
+    )
+
+    print('Seleccionando el umbral sobre validación (384 px)...')
+    y_validation_true_384, y_validation_pred_384 = collect_predictions(
+        model_384,
+        val_generator_384,
+    )
+    THRESHOLD_SELECTION_384 = find_threshold_for_minimum_sensitivity(
+        y_validation_true_384,
+        y_validation_pred_384,
+    )
+    THRESHOLD_384 = THRESHOLD_SELECTION_384['threshold']
+    print(f"Selección de umbral: {THRESHOLD_SELECTION_384}")
+
+    print('Evaluando el checkpoint de 384 px sobre test independiente...')
+    y_test_true_384, y_test_pred_keras_384 = collect_predictions(
+        model_384,
+        test_generator_384,
+    )
+    METRICS_KERAS_384_TEST = evaluate_model_comprehensive(
+        y_test_true_384,
+        y_test_pred_keras_384,
+        THRESHOLD_384,
+        model_name='keras_multimodal_384',
+        split_name='test',
+    )
+else:
+    THRESHOLD_SELECTION_384 = None
+    METRICS_KERAS_384_TEST = None
+    print('Evaluación de 384 px omitida.')
+""",
+    }
+)

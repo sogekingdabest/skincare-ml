@@ -1,0 +1,16 @@
+{
+  "id": "daniolaetafaria/skincare-ai-tflite-export-benchmark",
+  "title": "SkinCare AI - TFLite Export Benchmark",
+  "code_file": "export_tflite.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": false,
+  "enable_internet": false,
+  "dataset_sources": ["cdeotte/melanoma-256x256"],
+  "competition_sources": [],
+  "kernel_sources": [
+    "daniolaetafaria/skincare-ai-multimodal-melanoma-classification"
+  ],
+  "model_sources": []
+}
