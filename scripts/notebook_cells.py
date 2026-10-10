@@ -182,7 +182,7 @@ FILES_2019 = sorted(tf.io.gfile.glob(GCS_PATH_2019 + '/train*.tfrec'))
 if not FILES_2020 or not FILES_2019:
     raise FileNotFoundError(
         'No se encontraron los TFRecords de 256 px. '
-        'Adjunta los datasets indicados en docs/DATASETS.md.'
+        'Adjunta los datasets configurados en kernel-metadata.json.'
     )
 
 
@@ -932,7 +932,7 @@ if RUN_384_EXPERIMENT:
     if not FILES_2020_384 or not FILES_2019_384:
         raise FileNotFoundError(
             'No se encontraron los TFRecords de 384 px. '
-            'Adjunta los datasets indicados en docs/DATASETS.md.'
+            'Adjunta los datasets configurados en kernel-metadata.json.'
         )
 
     (

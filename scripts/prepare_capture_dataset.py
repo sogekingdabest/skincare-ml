@@ -1,8 +1,7 @@
 """Materialize a reviewed capture-validity dataset from an annotation CSV.
 
 The script deliberately does not infer labels. Every source image must have
-been reviewed and assigned one of the three semantic labels defined in
-docs/CAPTURE_VALIDITY_DATASET.md.
+been reviewed and assigned one of the three semantic labels in LABELS.
 """
 
 from __future__ import annotations

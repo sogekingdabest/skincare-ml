@@ -39,10 +39,8 @@ El flujo cubre:
 5. un experimento opcional de *progressive resizing* a 384 × 384;
 6. exportación del mejor checkpoint de 256 × 256 a TensorFlow Lite.
 
-Kaggle es el entorno de referencia. Las versiones exactas de los datasets, sus
-licencias y las limitaciones del modelo se documentan en
-[`DATASETS.md`](../docs/DATASETS.md) y
-[`MODEL_CARD.md`](../docs/MODEL_CARD.md).
+Kaggle es el entorno de referencia. Los datasets que utiliza el notebook se
+adjuntan mediante [`kernel-metadata.json`](../kernel-metadata.json).
 
 ## 1. Entorno y reproducibilidad
 
@@ -123,9 +121,8 @@ El umbral de decisión se selecciona sobre la curva ROC buscando una
 sensibilidad mínima del 85 %. Después se calculan ROC AUC, average precision,
 sensibilidad, especificidad, precisión, NPV, F1, MCC y balanced accuracy.
 
-El resultado registrado de referencia está en
-[`MODEL_CARD.md`](../docs/MODEL_CARD.md). Es una evaluación interna sobre el
-split de validación, no una validación clínica ni externa.
+Las métricas se generan durante la ejecución. Esta evaluación interna sobre
+el split de validación no constituye una validación clínica ni externa.
 """,
     16: """## 9. Experimento de *progressive resizing* a 384 × 384
 
@@ -159,9 +156,9 @@ de la fase 2, y genera `skincare_multimodal_256.tflite` con optimización
 dinámica de pesos.
 
 Este artefacto requiere dos entradas y no es intercambiable con el modelo
-single-input de 224 × 224 que actualmente consume la aplicación Android. El
-procedimiento de paridad necesario antes de una integración se describe en
-[`ANDROID_INTEGRATION.md`](../docs/ANDROID_INTEGRATION.md).
+single-input de 224 × 224 que actualmente consume la aplicación Android.
+Antes de integrarlo deben verificarse la compatibilidad de las entradas y la
+paridad de las predicciones con el modelo original.
 """,
 }
 
@@ -179,8 +176,7 @@ Una ejecución completa debe conservar fuera de Git:
 - los hashes SHA-256 de los artefactos;
 - las métricas y el umbral obtenidos en esa misma ejecución.
 
-Los binarios aprobados se publican como *release assets* y se registran en
-[`artifacts/manifest.json`](../artifacts/manifest.json). El repositorio no
+Los artefactos y sus resultados se conservan fuera de Git. El repositorio no
 incluye imágenes médicas ni credenciales de Kaggle.
 """
 
@@ -294,7 +290,7 @@ def prepare_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
                 "if not FILES_2020 or not FILES_2019:\n"
                 "    raise FileNotFoundError(\n"
                 "        'No se encontraron los TFRecords de 256 px. '\n"
-                "        'Adjunta los datasets indicados en docs/DATASETS.md.'\n"
+                "        'Adjunta los datasets configurados en kernel-metadata.json.'\n"
                 "    )\n"
             ),
         )
@@ -329,7 +325,7 @@ def prepare_notebook(notebook: dict[str, Any]) -> dict[str, Any]:
                 "if not FILES_2020_384 or not FILES_2019_384:\n"
                 "    raise FileNotFoundError(\n"
                 "        'No se encontraron los TFRecords de 384 px. '\n"
-                "        'Adjunta los datasets indicados en docs/DATASETS.md.'\n"
+                "        'Adjunta los datasets configurados en kernel-metadata.json.'\n"
                 "    )\n"
             ),
         )

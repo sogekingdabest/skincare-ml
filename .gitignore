@@ -42,3 +42,9 @@ Thumbs.db
 # Revisiones privadas y archivos temporales de los tests locales.
 /review_dani.csv
 /.test-tmp/
+
+# Documentación y herramientas internas de trabajo.
+/.private/
+/.agents/
+/.claude/
+/skills-lock.json

@@ -47,10 +47,8 @@ CELLS = [
         its `target_lesion` probability with the existing focus, light, scale and
         temporal-stability checks.
 
-        Dataset contract and annotation rules:
-        [`docs/CAPTURE_VALIDITY_DATASET.md`](../docs/CAPTURE_VALIDITY_DATASET.md).
-        The state-of-the-art review is in
-        [`docs/CAPTURE_VALIDITY_RESEARCH.md`](../docs/CAPTURE_VALIDITY_RESEARCH.md).
+        Build the reviewed dataset with `scripts/prepare_capture_dataset.py`
+        and the TFRecord package with `scripts/build_capture_tfrecords.py`.
         """
     ),
     code(
