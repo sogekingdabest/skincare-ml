@@ -42,7 +42,7 @@ def verify_artifact(path: Path, contract: dict) -> None:
 
 
 def encode_metadata(age: int, sex: int, site: int) -> list[float]:
-    if age not in range(-1, 121) or sex not in (-1, 0, 1) or site not in range(-1, 8):
+    if age not in range(-1, 121) or sex not in (-1, 0, 1) or site not in range(-1, 6):
         raise ValueError("Metadata must use the training encoding, including -1 for missing values")
     return [age / 100.0, float(sex), site / 7.0]
 
